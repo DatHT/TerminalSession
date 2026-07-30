@@ -37,15 +37,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         setupHotKey()
         updateTooltip()
 
-        // First launch: pop the panel so it's obvious the app is running and
-        // where to find it. Only once (persisted), so it's not annoying later.
-        let defaults = UserDefaults.standard
-        if !defaults.bool(forKey: "didWelcome") {
-            defaults.set(true, forKey: "didWelcome")
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
-                self?.showPanel()
-            }
+        // Opening the app should do something visible. It's a menu-bar agent
+        // (no window by default), so show the search panel on launch.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+            self?.showPanel()
         }
+    }
+
+    // Double-clicking the app in Finder/Spotlight while it's already running
+    // "reopens" it — show the search panel instead of doing nothing.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        showPanel()
+        return true
     }
 
     // MARK: - setup
