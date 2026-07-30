@@ -27,6 +27,25 @@ cp "$DIR/Info.plist" "$APP/Contents/Info.plist"
 rm -rf "$APP/Contents/Resources/tm"
 cp -R "$PROJ/assets/tm" "$APP/Contents/Resources/tm"
 
+# App icon (Finder, Get Info, the Automation permission dialog) from the logo.
+ICON_SRC="$PROJ/assets/command-icon.png"
+if [ -f "$ICON_SRC" ] && command -v iconutil >/dev/null 2>&1; then
+  ICONSET="$(mktemp -d)/AppIcon.iconset"; mkdir -p "$ICONSET"
+  sips -z 16 16     "$ICON_SRC" --out "$ICONSET/icon_16x16.png"      >/dev/null
+  sips -z 32 32     "$ICON_SRC" --out "$ICONSET/icon_16x16@2x.png"   >/dev/null
+  sips -z 32 32     "$ICON_SRC" --out "$ICONSET/icon_32x32.png"      >/dev/null
+  sips -z 64 64     "$ICON_SRC" --out "$ICONSET/icon_32x32@2x.png"   >/dev/null
+  sips -z 128 128   "$ICON_SRC" --out "$ICONSET/icon_128x128.png"    >/dev/null
+  sips -z 256 256   "$ICON_SRC" --out "$ICONSET/icon_128x128@2x.png" >/dev/null
+  sips -z 256 256   "$ICON_SRC" --out "$ICONSET/icon_256x256.png"    >/dev/null
+  sips -z 512 512   "$ICON_SRC" --out "$ICONSET/icon_256x256@2x.png" >/dev/null
+  sips -z 512 512   "$ICON_SRC" --out "$ICONSET/icon_512x512.png"    >/dev/null
+  sips -z 1024 1024 "$ICON_SRC" --out "$ICONSET/icon_512x512@2x.png" >/dev/null
+  iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
+  rm -rf "$(dirname "$ICONSET")"
+  echo "==> app icon set"
+fi
+
 # Ad-hoc code signature — gives the app a stable identity for TCC (Automation)
 # and lets macOS load it without Gatekeeper complaints for a locally built app.
 echo "==> ad-hoc signing"
