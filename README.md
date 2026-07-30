@@ -54,10 +54,10 @@ You need **Node.js** (the engine runs on it) and, for the app, the **Xcode comma
 ### The menu-bar app
 
 ```bash
-bash app/build.sh                 # compiles app/build/Terminal Sessions.app
-open app/build                    # drag "Terminal Sessions.app" into /Applications
-open "/Applications/Terminal Sessions.app"
+bash app/install.sh   # build → copy to /Applications → refresh icon → launch
 ```
+
+That's it — the logo shows in Finder → Applications and the `>|` mark appears in your menu bar. (Prefer to do it by hand? Run `bash app/build.sh`, then drag `app/build/Terminal Sessions.app` into `/Applications`. A freshly built app can show a *generic* icon in the build folder until it's installed/registered — that's normal; it appears once it's in `/Applications`.)
 
 Press **⌥Space** to summon the search panel. On the first focus/open, click **OK** on *"…wants to control Terminal.app."* Right-click the menu-bar icon for **Open at Login / Refresh / Quit**.
 

@@ -44,6 +44,9 @@ if [ -f "$ICON_SRC" ] && command -v iconutil >/dev/null 2>&1; then
   iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
   rm -rf "$(dirname "$ICONSET")"
   echo "==> app icon set"
+else
+  echo "==> WARNING: app icon skipped — need assets/command-icon.png and 'iconutil'."
+  echo "    If iconutil is missing, run: xcode-select --install"
 fi
 
 # Ad-hoc code signature — gives the app a stable identity for TCC (Automation)
