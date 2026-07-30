@@ -1,0 +1,54 @@
+{
+  "$schema": "https://www.raycast.com/schemas/extension.json",
+  "name": "terminal-session-manager",
+  "title": "Terminal Session Manager",
+  "description": "See every folder that has a Terminal.app or iTerm2 tab open, jump straight to it, and reuse an existing terminal instead of opening a duplicate.",
+  "icon": "command-icon.png",
+  "author": "dat_huynh",
+  "categories": ["Developer Tools", "Productivity"],
+  "license": "MIT",
+  "commands": [
+    {
+      "name": "manage-terminal-sessions",
+      "title": "Manage Terminal Sessions",
+      "subtitle": "Terminals",
+      "description": "Search open terminals by folder, focus one, or open a new terminal for a folder.",
+      "mode": "view"
+    }
+  ],
+  "preferences": [
+    {
+      "name": "defaultApp",
+      "title": "New terminal opens in",
+      "description": "Which app to launch when opening a NEW terminal. Auto = iTerm2 if installed, otherwise Terminal. The list always shows tabs from both apps.",
+      "type": "dropdown",
+      "required": false,
+      "default": "auto",
+      "data": [
+        { "title": "Auto (iTerm2 if installed)", "value": "auto" },
+        { "title": "iTerm2", "value": "iTerm2" },
+        { "title": "Terminal", "value": "Terminal" }
+      ]
+    }
+  ],
+  "dependencies": {
+    "@raycast/api": "^1.70.0",
+    "@raycast/utils": "^1.13.0"
+  },
+  "devDependencies": {
+    "@raycast/eslint-config": "^1.0.6",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "eslint": "^8.57.0",
+    "prettier": "^3.0.3",
+    "typescript": "^5.2.2"
+  },
+  "scripts": {
+    "build": "ray build",
+    "dev": "ray develop",
+    "lint": "ray lint",
+    "fix-lint": "ray lint --fix",
+    "publish": "npx @raycast/api@latest publish",
+    "tm": "node ./assets/tm/cli.mjs"
+  }
+}

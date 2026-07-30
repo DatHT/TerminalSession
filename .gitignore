@@ -1,0 +1,15 @@
+node_modules/
+.DS_Store
+*.log
+.raycast/
+raycast-env.d.ts
+dist/
+
+# Swift app build output
+app/build/
+
+# local Claude Code settings
+.claude/settings.local.json
+
+# demo scratch
+docs/demo_frame1.png
