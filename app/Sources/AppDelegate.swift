@@ -69,12 +69,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func buildStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         guard let button = statusItem.button else { return }
-        button.image = NSImage(systemSymbolName: "apple.terminal", accessibilityDescription: "Terminal Sessions")
-            ?? NSImage(systemSymbolName: "terminal", accessibilityDescription: "Terminal Sessions")
-        button.image?.isTemplate = true
+        button.image = makeMenuBarImage()
         button.target = self
         button.action = #selector(statusClicked)
         button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+    }
+
+    // The logo mark drawn as a monochrome template image, so it shows in the
+    // menu bar and adapts to light/dark (unlike a full-colour icon or the
+    // restricted "apple.terminal" SF Symbol, which can render blank).
+    private func makeMenuBarImage() -> NSImage {
+        let image = NSImage(size: NSSize(width: 19, height: 16), flipped: false) { _ in
+            NSColor.black.set()
+            let chevron = NSBezierPath()
+            chevron.lineWidth = 2.3
+            chevron.lineCapStyle = .round
+            chevron.lineJoinStyle = .round
+            chevron.move(to: NSPoint(x: 3.5, y: 12.4))
+            chevron.line(to: NSPoint(x: 8.6, y: 8))
+            chevron.line(to: NSPoint(x: 3.5, y: 3.6))
+            chevron.stroke()
+            NSBezierPath(roundedRect: NSRect(x: 12, y: 3.4, width: 3.2, height: 9.2),
+                         xRadius: 1.5, yRadius: 1.5).fill()
+            return true
+        }
+        image.isTemplate = true
+        return image
     }
 
     private func updateTooltip() {
