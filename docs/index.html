@@ -36,9 +36,9 @@
     background:rgba(15,18,24,.7);border-bottom:1px solid var(--border)}
   nav .wrap{display:flex;align-items:center;justify-content:space-between;height:60px}
   .logo{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:-.01em}
-  .logo .mark{font-family:var(--mono);color:var(--accent);
-    background:var(--accent-soft);border:1px solid #4a3a1c;border-radius:7px;
-    width:30px;height:30px;display:grid;place-items:center;font-size:15px}
+  .logo .mark{width:30px;height:30px;border-radius:8px;display:block}
+  .hero-logo{width:78px;height:78px;border-radius:19px;margin:0 auto 18px;display:block;
+    box-shadow:0 12px 40px -12px rgba(233,169,76,.35)}
   .btn{display:inline-flex;align-items:center;gap:8px;font-weight:600;font-size:14px;
     padding:9px 16px;border-radius:9px;border:1px solid var(--border);
     background:var(--panel);transition:.15s;white-space:nowrap}
@@ -143,11 +143,12 @@
 <body>
 
 <nav><div class="wrap">
-  <a class="logo" href="#top"><span class="mark">&gt;_</span> Terminal Sessions</a>
+  <a class="logo" href="#top"><img class="mark" src="logo.svg" alt="" width="30" height="30"> Terminal Sessions</a>
   <a class="btn" href="https://github.com/DatHT/TerminalSession" target="_blank" rel="noopener">★ Star on GitHub</a>
 </div></nav>
 
 <header class="hero" id="top"><div class="wrap">
+  <img class="hero-logo" src="logo.svg" alt="Terminal Sessions" width="78" height="78">
   <div class="eyebrow">macOS · Terminal.app + iTerm2</div>
   <h1>Jump to the right terminal by <span class="amber">folder</span>.<br>Never open a duplicate again.</h1>
   <p class="lead">A dozen terminals open, one per project — some running Claude, some just a shell. Stop clicking through tabs. Press a hotkey, type a few letters, hit&nbsp;↵. And when you ask for a folder you already have open, it <b>jumps to it</b> instead of piling on another.</p>

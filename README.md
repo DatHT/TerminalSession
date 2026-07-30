@@ -1,4 +1,6 @@
-# Terminal Session Manager
+<p align="center"><img src="assets/command-icon.png" width="104" alt="Terminal Sessions logo"></p>
+
+<h1 align="center">Terminal Session Manager</h1>
 
 **Stop hunting through terminal tabs. Jump to the right folder in two keystrokes — and never open a duplicate again.**
 

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Terminal Sessions">
+  <defs>
+    <linearGradient id="bg" x1="256" y1="0" x2="256" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#14181F"/>
+      <stop offset="1" stop-color="#0F1218"/>
+    </linearGradient>
+    <linearGradient id="amber" x1="332" y1="156" x2="332" y2="356" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F2B65E"/>
+      <stop offset="1" stop-color="#E9A94C"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="512" height="512" rx="112" ry="112" fill="url(#bg)"/>
+  <polyline points="168,182 250,256 168,330" fill="none" stroke="#E7EAF0" stroke-width="52" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="296" y="156" width="72" height="200" rx="20" ry="20" fill="url(#amber)"/>
+</svg>
