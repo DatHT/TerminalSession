@@ -2,6 +2,8 @@
 
 **Stop hunting through terminal tabs. Jump to the right folder in two keystrokes — and never open a duplicate again.**
 
+<p align="center"><b><a href="https://datht.github.io/TerminalSession/">▶ &nbsp;Live demo &amp; landing page → datht.github.io/TerminalSession</a></b></p>
+
 If you keep a dozen terminals open — one per project, some running `claude`, some just a shell — you know the pain: clicking tab after tab to find the one folder you want, and accidentally opening a *third* terminal for a folder you already had open. This fixes both.
 
 Press a hotkey, type a few letters of a folder name, hit **↵** — you're there. Ask for a folder you don't have open yet, and it opens one; ask for one you *do* have open, and it jumps to it instead of piling on another.
@@ -9,6 +11,7 @@ Press a hotkey, type a few letters of a folder name, hit **↵** — you're ther
 ![Terminal Session Manager in action](docs/demo.gif)
 
 <p align="center">
+  <a href="https://datht.github.io/TerminalSession/"><img alt="live demo" src="https://img.shields.io/badge/live%20demo-datht.github.io-e9a94c.svg"></a>
   <img alt="macOS" src="https://img.shields.io/badge/macOS-13%2B-111.svg">
   <img alt="Swift" src="https://img.shields.io/badge/Swift-5-orange.svg">
   <img alt="deps" src="https://img.shields.io/badge/3rd--party%20apps-none-2f7d32.svg">
