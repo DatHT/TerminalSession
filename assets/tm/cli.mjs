@@ -107,9 +107,24 @@ function fail(msg) {
   process.exitCode = 1;
 }
 
-main().catch((e) => {
-  console.error(e && e.needsAutomationPermission
-    ? `Automation permission needed: ${e.message}\nGrant it in System Settings → Privacy & Security → Automation.`
-    : String(e && e.stack ? e.stack : e));
-  process.exitCode = 1;
-});
+main()
+  .catch((e) => {
+    console.error(e && e.needsAutomationPermission
+      ? `Automation permission needed: ${e.message}\nGrant it in System Settings → Privacy & Security → Automation.`
+      : String(e && e.stack ? e.stack : e));
+    process.exitCode = 1;
+  })
+  .finally(finalizeAndExit);
+
+// Exit promptly even if an abandoned, un-cancellable fs operation (e.g. a
+// bounded recent-folder stat on a dead network mount) is still pending on the
+// libuv threadpool — otherwise it would keep the process, and any caller
+// waiting on our stdout EOF (the app / Raycast / `tm`), alive. Flush stdout
+// first so nothing is truncated.
+function finalizeAndExit() {
+  const code = process.exitCode || 0;
+  const done = () => process.exit(code);
+  setTimeout(done, 300).unref(); // safety net; fires only if a flush stalls
+  if (process.stdout.writableLength === 0) done();
+  else process.stdout.once("drain", done);
+}

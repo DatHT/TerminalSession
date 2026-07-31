@@ -29,6 +29,28 @@ export function normalize(p) {
   return out;
 }
 
+/**
+ * Light canonicalization for paths that are ALREADY real — e.g. the cwd values
+ * reported by lsof, which resolves symlinks itself, so the path needs no
+ * realpath. Critically this skips fs.realpathSync.native: that call is a
+ * SYNCHRONOUS stat/readlink and, on a dead network mount (SMB/NFS/sshfs/FUSE),
+ * blocks the whole Node process forever — no subprocess timeout can interrupt
+ * an in-process syscall. We use this for every scanned tab's cwd so one tab on
+ * a bad mount can't hang the entire listing. Only expands ~, resolves to an
+ * absolute path, and strips a trailing slash.
+ * @param {string} p
+ * @returns {string}
+ */
+export function lightNormalize(p) {
+  if (!p) return p;
+  let out = p.trim();
+  if (out === "~") out = HOME;
+  else if (out.startsWith("~/")) out = path.join(HOME, out.slice(2));
+  out = path.resolve(out);
+  if (out.length > 1 && out.endsWith("/")) out = out.slice(0, -1);
+  return out;
+}
+
 /** Home-relative display form: /Users/me/dev/x -> ~/dev/x */
 export function displayPath(p) {
   if (p === HOME) return "~";

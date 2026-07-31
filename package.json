@@ -49,6 +49,7 @@
     "lint": "ray lint",
     "fix-lint": "ray lint --fix",
     "publish": "npx @raycast/api@latest publish",
-    "tm": "node ./assets/tm/cli.mjs"
+    "tm": "node ./assets/tm/cli.mjs",
+    "test": "node ./assets/tm/test/cwd.test.mjs"
   }
 }

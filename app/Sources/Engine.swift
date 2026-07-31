@@ -26,9 +26,24 @@ struct EngineRecent: Decodable {
     let display: String
 }
 
+struct EngineError: Decodable {
+    let app: String
+    let message: String
+    let needsAutomationPermission: Bool
+}
+
 struct EngineList: Decodable {
     let groups: [EngineGroup]
     let recent: [EngineRecent]
+    let errors: [EngineError]?   // partial-scan warnings; nil on older engines
+}
+
+// Outcome of a list refresh: the folder rows plus an optional status/warning
+// line (a partial scan, a decode failure) so the UI never shows a silently
+// short list.
+struct ListResult {
+    let rows: [FolderRow]
+    let status: String?
 }
 
 // A specific open terminal within a folder.
@@ -123,11 +138,16 @@ enum Engine {
             + "/Documents/learning/claude/terminalManagement/assets/tm/cli.mjs"
     }
 
-    /// Run the engine and return raw stdout Data (nil if node is unavailable
-    /// or the process can't start). stderr is discarded to /dev/null so it can
-    /// never fill a pipe buffer and block the stdout read.
+    /// Run the engine and return raw stdout Data (nil if node is unavailable,
+    /// the process can't start, or it exceeds `timeout`). stderr is discarded to
+    /// /dev/null so it can never fill a pipe buffer and block the stdout read.
+    ///
+    /// The read happens on a background thread bounded by `timeout` so a stuck
+    /// scan — e.g. a process whose cwd sits on a dead network mount — can never
+    /// hang the menu bar forever. In the normal case the read completes in well
+    /// under a second, so nothing is truncated.
     @discardableResult
-    static func run(_ args: [String]) -> Data? {
+    static func run(_ args: [String], timeout: TimeInterval = 40) -> Data? {
         guard let node = nodePath else { return nil }
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: node)
@@ -140,16 +160,36 @@ enum Engine {
         } catch {
             return nil
         }
-        let data = out.fileHandleForReading.readDataToEndOfFile()
+
+        let handle = out.fileHandleForReading
+        let sem = DispatchSemaphore(value: 0)
+        var data = Data()
+        DispatchQueue.global(qos: .userInitiated).async {
+            data = handle.readDataToEndOfFile()   // returns at EOF (incl. after terminate)
+            sem.signal()
+        }
+        if sem.wait(timeout: .now() + timeout) == .timedOut {
+            proc.terminate()                       // SIGTERM the stuck child
+            _ = sem.wait(timeout: .now() + 2)      // let the reader drain EOF
+            return nil
+        }
         proc.waitUntilExit()
-        return data
+        return data                                // safe: semaphore is a memory barrier
     }
 
-    /// Fetch folders (those with an open terminal first, then recent).
-    static func list() -> [FolderRow] {
-        guard let data = run(["list", "--json"]),
-              let parsed = try? JSONDecoder().decode(EngineList.self, from: data)
-        else { return [] }
+    /// Fetch folders (those with an open terminal first, then recent), plus an
+    /// optional status line for partial scans / read failures.
+    static func list() -> ListResult {
+        guard let data = run(["list", "--json"]) else {
+            // nil ⇒ node missing or the scan timed out. The node-missing copy is
+            // chosen by the caller; here we only flag a genuine timeout.
+            return ListResult(rows: [], status: nodeAvailable
+                ? "Couldn’t read your terminals in time. Try again."
+                : nil)
+        }
+        guard let parsed = try? JSONDecoder().decode(EngineList.self, from: data) else {
+            return ListResult(rows: [], status: "Couldn’t read the terminal list (incomplete response). Try again.")
+        }
 
         var rows: [FolderRow] = []
         for g in parsed.groups {
@@ -178,7 +218,20 @@ enum Engine {
                 searchText: (r.name + " " + r.display).lowercased()
             ))
         }
-        return rows
+
+        // Surface a partial-scan reason so a short list is never silent. A
+        // permission denial often hits just ONE app (e.g. iTerm allowed,
+        // Terminal not), hiding that app's tabs while others still return rows —
+        // so it must show even when the list is non-empty.
+        let errs = parsed.errors ?? []
+        let status: String?
+        if errs.contains(where: { $0.needsAutomationPermission }) {
+            status = "Some terminals are hidden — grant Automation permission in "
+                + "System Settings ▸ Privacy & Security ▸ Automation."
+        } else {
+            status = errs.first?.message
+        }
+        return ListResult(rows: rows, status: status)
     }
 
     /// Reuse the terminal in `path`, else open a new one there.

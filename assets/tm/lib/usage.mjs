@@ -40,22 +40,45 @@ export function lastUsed(folder) {
 /**
  * Recently-used folders, most recent first, excluding any in `exclude` (the
  * folders that currently have a terminal open) and any that no longer exist.
+ *
+ * The directory-existence check is BOUNDED: it uses async fs.stat raced against
+ * a short timer, so a recent folder that now lives on a dead network mount
+ * (SMB/NFS/sshfs/FUSE) can't block the whole Node process the way a synchronous
+ * fs.statSync would — the same hang the cwd path was hardened against. We also
+ * probe only the most-recent handful, never the entire store.
  * @param {Set<string>} exclude
  * @param {number} limit
- * @returns {string[]}
+ * @returns {Promise<string[]>}
  */
-export function recentPaths(exclude = new Set(), limit = 12) {
+export async function recentPaths(exclude = new Set(), limit = 12) {
   const usage = readUsage();
-  return Object.entries(usage)
+  const candidates = Object.entries(usage)
     .filter(([p]) => !exclude.has(p))
-    .filter(([p]) => {
-      try {
-        return fs.statSync(p).isDirectory();
-      } catch {
-        return false;
-      }
-    })
     .sort((a, b) => b[1] - a[1])
-    .slice(0, limit)
-    .map(([p]) => p);
+    .map(([p]) => p)
+    .slice(0, Math.max(limit * 3, limit)); // cap how many paths we ever stat
+
+  const reachable = await Promise.all(candidates.map((p) => isReachableDir(p)));
+  const out = [];
+  for (let i = 0; i < candidates.length && out.length < limit; i++) {
+    if (reachable[i]) out.push(candidates[i]);
+  }
+  return out;
+}
+
+/** True if `p` is a directory; resolves false after `timeoutMs` so a dead mount never blocks. */
+async function isReachableDir(p, timeoutMs = 400) {
+  let timer;
+  const bail = new Promise((resolve) => {
+    timer = setTimeout(() => resolve(false), timeoutMs);
+  });
+  const check = fs.promises
+    .stat(p)
+    .then((s) => s.isDirectory())
+    .catch(() => false);
+  try {
+    return await Promise.race([check, bail]);
+  } finally {
+    clearTimeout(timer);
+  }
 }

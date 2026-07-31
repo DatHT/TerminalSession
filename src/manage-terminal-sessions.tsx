@@ -51,10 +51,18 @@ interface EngineError {
   app: string;
   message: string;
   needsAutomationPermission: boolean;
+  timedOut?: boolean;
+}
+interface Unresolved {
+  app: string;
+  tabId: string;
+  tty: string;
+  proc: string | null;
 }
 interface ListData {
   groups: Group[];
   recent: Recent[];
+  unresolved?: Unresolved[];
   errors: EngineError[];
 }
 interface Prefs {
@@ -64,8 +72,11 @@ interface Prefs {
 async function engine(args: string[]): Promise<{ stdout: string; stderr: string; code: number }> {
   try {
     const { stdout, stderr } = await execFileP(process.execPath, [ENGINE, ...args], {
-      timeout: 20000,
-      maxBuffer: 16 * 1024 * 1024,
+      // Must exceed the engine's own worst-case internal timeouts (enumerate +
+      // ps + lsof); a shorter outer cap would SIGKILL a slow-but-working scan
+      // and turn a partial list into an empty one.
+      timeout: 45000,
+      maxBuffer: 32 * 1024 * 1024,
     });
     return { stdout, stderr, code: 0 };
   } catch (e) {
@@ -77,7 +88,12 @@ async function engine(args: string[]): Promise<{ stdout: string; stderr: string;
 async function loadData(): Promise<ListData> {
   const { stdout, stderr, code } = await engine(["list", "--json"]);
   if (!stdout) throw new Error(stderr || `engine exited ${code}`);
-  return JSON.parse(stdout) as ListData;
+  try {
+    return JSON.parse(stdout) as ListData;
+  } catch {
+    // Truncated/edge payload — say so instead of failing with a raw parse error.
+    throw new Error("Couldn't read the terminal list (incomplete response). Try refreshing.");
+  }
 }
 
 function appArgs(): string[] {
@@ -107,6 +123,7 @@ export default function Command() {
   const [search, setSearch] = useState("");
 
   const permissionError = data?.errors.find((e) => e.needsAutomationPermission);
+  const warnings = (data?.errors ?? []).filter((e) => !e.needsAutomationPermission);
   const looksLikePath = /^(~|\/|\.\/)/.test(search.trim());
 
   const refresh = (
@@ -162,6 +179,43 @@ export default function Command() {
                 {refresh}
               </ActionPanel>
             }
+          />
+        </List.Section>
+      ) : null}
+
+      {permissionError && (data?.groups.length ?? 0) > 0 ? (
+        // Permission was denied for at least one app while another still
+        // returned tabs — surface it instead of silently hiding that app.
+        <List.Section title="Heads up">
+          <List.Item
+            icon={{ source: Icon.Lock, tintColor: Color.Orange }}
+            title="Some terminals are hidden"
+            subtitle="Grant Automation permission to control your terminals, then press ⌘R"
+            actions={
+              <ActionPanel>
+                <Action
+                  title="Open Automation Settings"
+                  icon={Icon.Gear}
+                  onAction={() =>
+                    open("x-apple.systempreferences:com.apple.preference.security?Privacy_Automation")
+                  }
+                />
+                {refresh}
+              </ActionPanel>
+            }
+          />
+        </List.Section>
+      ) : warnings.length > 0 ? (
+        <List.Section title="Heads up">
+          <List.Item
+            icon={{ source: Icon.Warning, tintColor: Color.Yellow }}
+            title={warnings[0].message}
+            subtitle={
+              warnings.length > 1
+                ? `+${warnings.length - 1} more — some terminals may be missing`
+                : "Some terminals may be missing — press ⌘R to refresh"
+            }
+            actions={<ActionPanel>{refresh}</ActionPanel>}
           />
         </List.Section>
       ) : null}

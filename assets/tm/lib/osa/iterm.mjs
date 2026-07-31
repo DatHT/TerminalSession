@@ -9,42 +9,87 @@ export const APP = "iTerm2";
 const BUNDLE = 'application id "com.googlecode.iterm2"';
 
 /**
- * Enumerate every open iTerm2 session (a session is a pane/tab). Returns raw
- * tabs without cwd; the engine resolves cwds for all apps in one pass.
+ * Enumerate every open iTerm2 session (a session is a pane/tab), INCLUDING
+ * buried sessions. Returns raw tabs without cwd; the engine resolves cwds for
+ * all apps in one pass.
+ *
+ * Speed & safety: ids and ttys are read in BULK (`tty of sessions of t` is one
+ * Apple event per tab, not one per pane), keeping a window full of split panes
+ * well under the timeout. Every per-window / per-tab read is wrapped in `try`
+ * so one odd session can't abort the whole scan; if a bulk read throws we fall
+ * back to reading that tab's sessions one by one.
  * @returns {Promise<Array<{app:string,windowId:number,tabId:string,sessionId:string,tty:string,selected:boolean,frontmost:boolean}>>}
  */
 export async function enumerate() {
   const script = `
     if ${BUNDLE} is not running then return ""
+    set AppleScript's text item delimiters to linefeed
     tell ${BUNDLE}
-      if (count of windows) is 0 then return ""
       set curWinId to ""
       try
         set curWinId to (id of current window) as text
       end try
-      set out to ""
+      set rows to {}
       repeat with w in windows
-        set wid to id of w
+        set wid to -1
+        try
+          set wid to id of w
+        end try
         set curSid to ""
         try
-          set curSid to id of current session of current tab of w
+          set curSid to (id of current session of current tab of w) as text
         end try
         repeat with t in tabs of w
-          repeat with s in sessions of t
-            set sid to id of s
+          set sids to {}
+          set ttys to {}
+          try
+            set sids to id of sessions of t
+            set ttys to tty of sessions of t
+          on error
+            set sids to {}
+            set ttys to {}
+            repeat with s in sessions of t
+              set sid2 to ""
+              set tt2 to ""
+              try
+                set sid2 to (id of s) as text
+                set tt2 to tty of s
+              end try
+              set end of sids to sid2
+              set end of ttys to tt2
+            end repeat
+          end try
+          repeat with i from 1 to (count of sids)
+            set sid to item i of sids
             set tt to ""
             try
-              set tt to tty of s
+              set tt to item i of ttys
             end try
-            if tt is not "" then
-              set out to out & wid & "|" & sid & "|" & tt & "|" & (sid is curSid) & "|" & ((wid as text) is curWinId) & linefeed
+            if sid is not missing value and (sid as text) is not "" and tt is not missing value and tt is not "" then
+              set isSel to ((sid as text) is equal to curSid)
+              set isFront to ((wid as text) is equal to curWinId)
+              set end of rows to (wid as text) & "|" & (sid as text) & "|" & tt & "|" & (isSel as text) & "|" & (isFront as text)
             end if
           end repeat
         end repeat
       end repeat
-      return out
+      -- Buried sessions (hidden, not in any window) — otherwise invisible.
+      try
+        repeat with s in buried sessions
+          set sid to ""
+          set tt to ""
+          try
+            set sid to (id of s) as text
+            set tt to tty of s
+          end try
+          if sid is not "" and tt is not missing value and tt is not "" then
+            set end of rows to "-1|" & sid & "|" & tt & "|false|false"
+          end if
+        end repeat
+      end try
+      return rows as text
     end tell`;
-  const raw = await osa(script);
+  const raw = await osa(script, { timeoutMs: 15000 });
   const tabs = [];
   for (const line of raw.split("\n")) {
     if (!line.trim()) continue;
@@ -64,7 +109,8 @@ export async function enumerate() {
 }
 
 /**
- * Bring a specific session to the front by its stable id.
+ * Bring a specific session to the front by its stable id. Handles buried
+ * sessions too (they must be revealed before they can be selected).
  * @param {{sessionId:string}} tab
  * @returns {Promise<boolean>}
  */
@@ -85,6 +131,16 @@ export async function focus(tab) {
           end repeat
         end repeat
       end repeat
+      -- Not in any window: try to reveal a buried session with this id.
+      try
+        repeat with s in buried sessions
+          if (id of s) is ${want} then
+            reveal s
+            activate
+            return "true"
+          end if
+        end repeat
+      end try
       return "false"
     end tell`;
   const out = await osa(script);

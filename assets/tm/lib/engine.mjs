@@ -6,11 +6,12 @@ import os from "node:os";
 import fs from "node:fs";
 import path from "node:path";
 
+import { isProcessRunning } from "./exec.mjs";
 import * as terminal from "./osa/terminal.mjs";
 import * as iterm from "./osa/iterm.mjs";
 import { resolveCwds } from "./cwd.mjs";
 import { normalize, displayPath, baseName } from "./paths.mjs";
-import { touch, lastUsed, recentPaths } from "./usage.mjs";
+import { touch, readUsage, recentPaths } from "./usage.mjs";
 
 /**
  * @typedef {Object} Tab
@@ -36,11 +37,15 @@ import { touch, lastUsed, recentPaths } from "./usage.mjs";
 
 const shortTty = (t) => String(t || "").replace(/^\/dev\//, "");
 
-/** Is iTerm2 installed on disk? */
+/** Is iTerm2 installed on disk? Checks the common locations, including Setapp. */
 export function itermInstalled() {
+  const home = os.homedir();
   return [
     "/Applications/iTerm.app",
-    path.join(os.homedir(), "Applications/iTerm.app"),
+    "/Applications/iTerm2.app",
+    path.join(home, "Applications/iTerm.app"),
+    "/Applications/Setapp/iTerm.app",
+    path.join(home, "Applications/Setapp/iTerm.app"),
   ].some((p) => {
     try {
       return fs.existsSync(p);
@@ -50,9 +55,29 @@ export function itermInstalled() {
   });
 }
 
+/**
+ * Is iTerm2 currently running? Detected by process name, so it is found no
+ * matter where the app is installed — this is why a machine with iTerm in a
+ * non-standard location (Setapp, MacPorts, a custom folder) used to show ZERO
+ * iTerm tabs: the install-path check missed it and the scan was skipped.
+ * @returns {Promise<boolean>}
+ */
+export function itermRunning() {
+  return isProcessRunning("iTerm");
+}
+
+/**
+ * Should we scan iTerm2 at all? Yes if it is installed anywhere OR a process is
+ * running (open tabs ⇒ running ⇒ detected regardless of install path).
+ * @returns {Promise<boolean>}
+ */
+export async function itermActive() {
+  return itermInstalled() || (await itermRunning());
+}
+
 /** Which app to use when opening a brand-new terminal (confirmed default: iTerm2 if present). */
-export function defaultApp() {
-  return itermInstalled() ? "iTerm2" : "Terminal";
+export async function defaultApp() {
+  return (await itermActive()) ? "iTerm2" : "Terminal";
 }
 
 /**
@@ -65,24 +90,44 @@ export async function scanTabs() {
     try {
       return await mod.enumerate();
     } catch (e) {
+      // App genuinely absent (a process-name false-match, or it quit mid-scan)
+      // isn't an error worth showing — the app just has no tabs.
+      if (e && e.appMissing) return [];
       errors.push({
         app: mod.APP,
         message: String(e && e.message ? e.message : e),
         needsAutomationPermission: !!(e && e.needsAutomationPermission),
+        timedOut: !!(e && e.timedOut),
       });
       return [];
     }
   };
 
-  // Only scan iTerm2 if it's actually installed — avoids a spurious error on
-  // machines that don't have it.
+  // Scan iTerm2 if it is installed anywhere OR currently running, so open iTerm
+  // tabs are never missed just because iTerm lives outside /Applications.
+  const scanIterm = await itermActive();
   const [tTabs, iTabs] = await Promise.all([
     collect(terminal),
-    itermInstalled() ? collect(iterm) : Promise.resolve([]),
+    scanIterm ? collect(iterm) : Promise.resolve([]),
   ]);
   const tabs = [...tTabs, ...iTabs];
 
-  const cwds = await resolveCwds(tabs.map((t) => t.tty));
+  // Resolve folders. A throw here must NOT discard the tabs we already found —
+  // leave them unresolved (and surfaced) rather than failing the whole scan.
+  let cwds = new Map();
+  try {
+    const res = await resolveCwds(tabs.map((t) => t.tty));
+    cwds = res.cwds;
+    for (const w of res.warnings) {
+      errors.push({ app: "folders", message: w, needsAutomationPermission: false });
+    }
+  } catch (e) {
+    errors.push({
+      app: "folders",
+      message: "could not read working directories: " + String(e && e.message ? e.message : e),
+      needsAutomationPermission: false,
+    });
+  }
   for (const t of tabs) {
     const info = cwds.get(shortTty(t.tty));
     t.cwd = info ? info.cwd : null;
@@ -99,11 +144,17 @@ export async function scanTabs() {
  */
 export async function listSessions() {
   const { tabs, errors } = await scanTabs();
+  const usage = readUsage(); // read the frecency store once, not once per folder
 
   /** @type {Map<string, FolderGroup>} */
   const byPath = new Map();
+  /** Tabs whose folder couldn't be read — surfaced below, never silently dropped. */
+  const unresolved = [];
   for (const t of tabs) {
-    if (!t.cwd) continue; // couldn't resolve a folder — can't group it
+    if (!t.cwd) {
+      unresolved.push({ app: t.app, tabId: t.tabId, tty: shortTty(t.tty), proc: t.proc || null });
+      continue; // no folder ⇒ can't group by folder; reported as a count instead
+    }
     let g = byPath.get(t.cwd);
     if (!g) {
       byPath.set(
@@ -115,7 +166,7 @@ export async function listSessions() {
           tabs: [],
           apps: [],
           frontmost: false,
-          lastUsed: lastUsed(t.cwd),
+          lastUsed: usage[t.cwd] || 0,
         })
       );
     }
@@ -142,14 +193,23 @@ export async function listSessions() {
       a.name.localeCompare(b.name)
   );
 
+  // Make any residual drop LOUD so the list is never silently short.
+  if (unresolved.length) {
+    errors.push({
+      app: "folders",
+      message: `${unresolved.length} open terminal tab(s) could not be matched to a folder`,
+      needsAutomationPermission: false,
+    });
+  }
+
   const openPaths = new Set(groups.map((g) => g.path));
-  const recent = recentPaths(openPaths, 12).map((p) => ({
+  const recent = (await recentPaths(openPaths, 12)).map((p) => ({
     path: p,
     name: baseName(p),
     display: displayPath(p),
   }));
 
-  return { groups, recent, errors };
+  return { groups, recent, unresolved, errors };
 }
 
 /** Pick the most sensible tab to focus within a group. */
@@ -189,7 +249,7 @@ export async function focusFolder(folder) {
  */
 export async function openFolder(folder, opts = {}) {
   const target = normalize(folder);
-  const app = opts.app || defaultApp();
+  const app = opts.app || (await defaultApp());
   if (app === "iTerm2") await iterm.openNew(target);
   else await terminal.openNew(target);
   touch(target);
@@ -213,17 +273,21 @@ export async function openOrFocus(folder, opts = {}) {
 
 /** Human-readable diagnostics for troubleshooting. */
 export async function doctor() {
+  const started = Date.now();
   const { tabs, errors } = await scanTabs();
+  const scanMs = Date.now() - started;
   const byApp = { iTerm2: 0, Terminal: 0 };
   const unresolved = [];
   for (const t of tabs) {
     byApp[t.app] = (byApp[t.app] || 0) + 1;
-    if (!t.cwd) unresolved.push(`${t.app} ${t.tty}`);
+    if (!t.cwd) unresolved.push(`${t.app} ${t.tty} (${t.proc || "?"})`);
   }
   return {
     node: process.version,
+    scanMs,
     itermInstalled: itermInstalled(),
-    defaultApp: defaultApp(),
+    itermRunning: await itermRunning(),
+    defaultApp: await defaultApp(),
     tabsFound: tabs.length,
     byApp,
     foldersResolved: tabs.filter((t) => t.cwd).length,

@@ -3,9 +3,11 @@ import AppKit
 // Headless self-test: verifies the engine wiring without any UI.
 //   TerminalSessions.app/Contents/MacOS/TerminalSessions --selftest
 if CommandLine.arguments.contains("--selftest") {
-    let folders = Engine.list()
+    let result = Engine.list()
+    let folders = result.rows
     print("selftest: engine=\(Engine.enginePath)")
     print("selftest: node=\(Engine.nodePath ?? "NOT FOUND")")
+    if let status = result.status { print("selftest: status=\(status)") }
     print("selftest: \(folders.count) folder(s)")
     for f in folders.prefix(12) {
         let detail = f.isOpen ? f.tabs.map { $0.proc }.joined(separator: ", ") : "recent"

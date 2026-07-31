@@ -22,6 +22,7 @@ final class SearchViewController: NSViewController, NSTableViewDataSource, NSTab
     private var current: FolderRow?
     private var terminals: [TabRow] = []        // filtered tabs of `current`
     private var savedFolderQuery = ""
+    private var loadWarning: String?            // partial-scan notice, shown in the footer
 
     /// Set by the app: dismiss the panel.
     var closePopover: (() -> Void)?
@@ -110,16 +111,20 @@ final class SearchViewController: NSViewController, NSTableViewDataSource, NSTab
         updateHint()
 
         DispatchQueue.global(qos: .userInitiated).async {
-            let rows = Engine.list()
+            let result = Engine.list()
             DispatchQueue.main.async {
-                self.allFolders = rows
+                self.allFolders = result.rows
+                // A warning decorates the footer only when we DO have rows; when
+                // the list is empty the reason goes in the centered status label.
+                self.loadWarning = result.rows.isEmpty ? nil : result.status
                 self.applyFolderFilter("")
-                self.statusLabel.isHidden = !rows.isEmpty
-                if rows.isEmpty {
-                    self.statusLabel.stringValue = Engine.nodeAvailable
-                        ? "No open terminals.\nType a path (⏎) to open one."
-                        : "Node.js not found.\nInstall Node so the tool can read your terminals."
+                self.statusLabel.isHidden = !result.rows.isEmpty
+                if result.rows.isEmpty {
+                    self.statusLabel.stringValue = !Engine.nodeAvailable
+                        ? "Node.js not found.\nInstall Node so the tool can read your terminals."
+                        : (result.status ?? "No open terminals.\nType a path (⏎) to open one.")
                 }
+                self.updateHint()
             }
         }
     }
@@ -269,9 +274,16 @@ final class SearchViewController: NSViewController, NSTableViewDataSource, NSTab
     }
 
     private func updateHint() {
-        hint.stringValue = (mode == .folders)
+        let base = (mode == .folders)
             ? "↑↓ move    ↵ open · ⟶ expand    esc close"
             : "↑↓ move    ↵ focus    ⟵ / esc back"
+        if mode == .folders, let w = loadWarning {
+            hint.stringValue = "⚠︎ " + w
+            hint.textColor = .systemOrange
+        } else {
+            hint.stringValue = base
+            hint.textColor = .tertiaryLabelColor
+        }
     }
 
     private func cursorAtEnd(_ tv: NSTextView) -> Bool {
