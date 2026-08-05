@@ -5,13 +5,20 @@ import AppKit
 //                "N terminals ›"; press → or ↵ to drill in.
 //   • Terminals — that folder's terminals, labelled by what's running
 //                (claude / shell / …); ↵ focuses the chosen one, ← / esc goes back.
+/// A table that never steals keyboard focus from the search field (Spotlight
+/// pattern): clicks still select rows and fire the action, but typing, Enter,
+/// Esc and the arrow keys keep flowing through the search field's editor.
+private final class PassiveTableView: NSTableView {
+    override var acceptsFirstResponder: Bool { false }
+}
+
 final class SearchViewController: NSViewController, NSTableViewDataSource, NSTableViewDelegate,
     NSSearchFieldDelegate {
 
     private enum Mode { case folders, terminals }
 
     private let searchField = NSSearchField()
-    private let tableView = NSTableView()
+    private let tableView: NSTableView = PassiveTableView()
     private let scrollView = NSScrollView()
     private let hint = NSTextField(labelWithString: "")
     private let statusLabel = NSTextField(labelWithString: "")
@@ -23,6 +30,7 @@ final class SearchViewController: NSViewController, NSTableViewDataSource, NSTab
     private var terminals: [TabRow] = []        // filtered tabs of `current`
     private var savedFolderQuery = ""
     private var loadWarning: String?            // partial-scan notice, shown in the footer
+    private var reloadGeneration = 0            // drops stale async list results
 
     /// Set by the app: dismiss the panel.
     var closePopover: (() -> Void)?
@@ -50,6 +58,9 @@ final class SearchViewController: NSViewController, NSTableViewDataSource, NSTab
         tableView.dataSource = self
         tableView.delegate = self
         tableView.target = self
+        // A single click on a row jumps straight to that terminal (launcher-style),
+        // and drills into a multi-terminal folder. Double-click works too.
+        tableView.action = #selector(activateSelection)
         tableView.doubleAction = #selector(activateSelection)
 
         scrollView.translatesAutoresizingMaskIntoConstraints = false
@@ -110,14 +121,20 @@ final class SearchViewController: NSViewController, NSTableViewDataSource, NSTab
         tableView.reloadData()
         updateHint()
 
+        reloadGeneration += 1
+        let generation = reloadGeneration
         DispatchQueue.global(qos: .userInitiated).async {
             let result = Engine.list()
             DispatchQueue.main.async {
+                // A newer reload started while this one was scanning — drop it.
+                guard generation == self.reloadGeneration else { return }
                 self.allFolders = result.rows
                 // A warning decorates the footer only when we DO have rows; when
                 // the list is empty the reason goes in the centered status label.
                 self.loadWarning = result.rows.isEmpty ? nil : result.status
-                self.applyFolderFilter("")
+                // Honor whatever the user has typed while the scan ran — filtering
+                // with "" would discard their query and select the wrong row.
+                self.applyFolderFilter(self.searchField.stringValue)
                 self.statusLabel.isHidden = !result.rows.isEmpty
                 if result.rows.isEmpty {
                     self.statusLabel.stringValue = !Engine.nodeAvailable
@@ -262,6 +279,7 @@ final class SearchViewController: NSViewController, NSTableViewDataSource, NSTab
         searchField.placeholderString = "‹ \(folder.name) — pick a terminal"
         applyTerminalFilter("")
         updateHint()
+        focusSearchField()   // a mouse drill-in must not leave the keyboard dead
     }
 
     private func backToFolders() {
@@ -271,6 +289,7 @@ final class SearchViewController: NSViewController, NSTableViewDataSource, NSTab
         searchField.stringValue = savedFolderQuery
         applyFolderFilter(savedFolderQuery)
         updateHint()
+        focusSearchField()
     }
 
     private func updateHint() {

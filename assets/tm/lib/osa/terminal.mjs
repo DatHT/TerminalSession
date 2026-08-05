@@ -95,27 +95,28 @@ export async function enumerate() {
  */
 export async function focus(tab) {
   const wantTty = asLiteral(tab.tty);
+  // The window is addressed BY ID (`window id N`), never through a
+  // `repeat with w in windows` loop variable: those are INDEX references, and
+  // bringing a window forward reorders the window list — after which the loop
+  // variable silently resolves to a DIFFERENT window and the wrong terminal
+  // gets fronted (confirmed live: fronting index-5 made `w` point at the old
+  // index-5 occupant). By-id references are immune to reordering.
   const script = `
     tell application "Terminal"
       set found to false
-      repeat with w in windows
-        if (id of w) is ${tab.windowId} then
-          repeat with t in tabs of w
-            try
-              if (tty of t) is ${wantTty} then
-                set selected of t to true
-                set found to true
-              end if
-            end try
-          end repeat
+      try
+        set w to window id ${tab.windowId}
+        repeat with t in tabs of w
           try
-            set frontmost of w to true
+            if (tty of t) is ${wantTty} then
+              set selected of t to true
+              set found to true
+              exit repeat
+            end if
           end try
-          try
-            set index of w to 1
-          end try
-        end if
-      end repeat
+        end repeat
+        set index of w to 1
+      end try
       activate
       return found
     end tell`;

@@ -116,21 +116,42 @@ export async function enumerate() {
  */
 export async function focus(tab) {
   const want = asLiteral(tab.sessionId);
+  // Two passes: a READ-ONLY search for the owning window's id, then all
+  // mutations through a by-id window reference. Mutating via loop variables is
+  // unsafe here: \`select w\` reorders the window list, after which \`t\`/\`s\`
+  // (index references THROUGH the windows list) can resolve into a different
+  // window — the same reorder bug confirmed live in the Terminal.app driver.
   const script = `
     tell ${BUNDLE}
+      set targetWid to missing value
       repeat with w in windows
         repeat with t in tabs of w
           repeat with s in sessions of t
             if (id of s) is ${want} then
-              select w
-              select t
-              select s
-              activate
-              return "true"
+              set targetWid to id of w
+              exit repeat
             end if
           end repeat
+          if targetWid is not missing value then exit repeat
         end repeat
+        if targetWid is not missing value then exit repeat
       end repeat
+      if targetWid is not missing value then
+        tell window id targetWid
+          repeat with t in tabs
+            repeat with s in sessions of t
+              if (id of s) is ${want} then
+                select t
+                select s
+                exit repeat
+              end if
+            end repeat
+          end repeat
+          select
+        end tell
+        activate
+        return "true"
+      end if
       -- Not in any window: try to reveal a buried session with this id.
       try
         repeat with s in buried sessions
